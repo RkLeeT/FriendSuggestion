@@ -69,8 +69,12 @@ public class FriendSuggestion implements AutoCloseable {
 //    	MERGE (user2:USER {name: row.user2})
 //    	MERGE (user1)-[:FRIEND]-(user2)   
     	
-    	tx.run("MERGE (user1:USER {name:$user1})-[:FRIEND]-(user2:USER {name:$user2})", 
-    			parameters("user1", user1, "user2", user2));
+    	tx.run("MERGE (user1:USER {name:$user1})"
+    			+ "MERGE (user2:USER {name:$user2})"
+    			+ "MERGE (user1)-[:FRIEND]-(user2)", parameters("user1", user1, "user2", user2));
+    	
+//    	tx.run("MERGE (user1:USER {name:$user1})-[:FRIEND]-(user2:USER {name:$user2})", 
+//    			parameters("user1", user1, "user2", user2));
     	return 1;
     }
     
@@ -110,11 +114,11 @@ public class FriendSuggestion implements AutoCloseable {
 //    	WHERE NOT((user)–[:FRIEND]–(friends_of_my_friends)) 
 //    	RETURN collect(my_friends.name), friends_of_my_friends.name
 		
-		HashMap<String, Integer> hm = new HashMap<String, Integer>();
+		HashMap<String, List> hm = new HashMap<String, List>();
 		
 		StatementResult result = tx.run("MATCH (user:USER {name:$name})-[:FRIEND]-(my_friends)-[:FRIEND]-(friends_of_my_friends)" + 
 							" WHERE NOT(user)-[:FRIEND]-(friends_of_my_friends)" +
-							" RETURN collect(my_friends.name) AS friendSuggestions, friends_of_my_friends AS fromFriend",
+							" RETURN collect(my_friends.name) AS SuggestionsFrom, friends_of_my_friends AS FriendSuggested",
 							parameters("name", name));
 		
 		System.out.println();
@@ -122,12 +126,18 @@ public class FriendSuggestion implements AutoCloseable {
 		while( result.hasNext() )
 		{
 			Record record = result.next();
-			System.out.println( record.get( "friendSuggestions" ) + " list from ur friend " + record.get( "fromFriend" ).get("name") );
-			List<Object> list = record.get("friendSuggestions").asList();
-			for(int i=0; i<list.size(); i++)
-			{
-				hm.merge((String) list.get(i), 1, (a, b) -> a + b);
-			}
+			
+			List<Object> from = record.get("SuggestionsFrom").asList();
+			String suggested = record.get( "FriendSuggested" ).get("name").asString();
+			
+			System.out.println( from + " suggested this guy : " + suggested );
+			
+			hm.put(suggested, from);
+			
+//			for(int i=0; i<list.size(); i++)
+//			{
+//				hm.merge((String) list.get(i), 1, (a, b) -> a + b);
+//			}
 		}
 		
 //		hm.entrySet().forEach(entry -> {
@@ -135,23 +145,23 @@ public class FriendSuggestion implements AutoCloseable {
 //		 });
 		
 		System.out.println();
-		System.out.println("SORTED as per the COUNT");
+		System.out.println("SORTED as per the MAX SUGGESTIONS FROM");
+		
+		String maxKey = Collections.max(hm.entrySet(), (k1, k2) -> k1.getValue().size() - k2.getValue().size()).getKey();
+		int maxSize = hm.get(maxKey).size();
 		
 		hm.entrySet().stream()
-        .sorted((k1, k2) -> -k1.getValue().compareTo(k2.getValue()))
+        .sorted((k1, k2) -> k2.getValue().size() - k1.getValue().size())
         .forEach(k -> {
-        	System.out.println(k.getKey() + ": " + k.getValue());
-        } );
+        	int size = k.getValue().size();
+        	if(maxSize == size)
+        		System.out.println("Suggested user: "+k.getKey());
+//        	System.out.println(k.getKey() + ": " + k.getValue());
+        });
 		
 		System.out.println();
-		
-		int maxValueInMap = (Collections.max(hm.values()));  
-        for (Entry<String, Integer> entry : hm.entrySet()) {  
-            if (entry.getValue() == maxValueInMap) {
-                System.out.println("Suggested user: "+entry.getKey());     
-            }
-        }
-		
+	
+
 		return 1;
 			
 	}
